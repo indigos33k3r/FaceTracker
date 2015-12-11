@@ -85,9 +85,23 @@ void Draw(cv::Mat &image,cv::Mat &shape,cv::Mat &con,cv::Mat &tri,cv::Mat &visi)
     c = CV_RGB(255,0,0); cv::circle(image,p1,2,c);
   }return;
 }
+
+void writePointsToFile(cv::Mat &shape, std::fstream &filestream) {
+  int n = shape.rows / 2;
+  std::stringstream line;
+  for (int i = 0; i < n; i++) {
+    if (i != 0) {
+      line << ",";
+    }
+    line << shape.at<double>(i,0) << "," << shape.at<double>(i+n,0);
+  }
+  line << "\n";
+  filestream << line.str();
+}
+
 //=============================================================================
 int parse_cmd(int argc, const char** argv,
-	      char* ftFile,char* conFile,char* triFile,
+	      char* ftFile,char* conFile,char* triFile,char* outputFile,
 	      bool &fcheck,double &scale,int &fpd)
 {
   int i; fcheck = false; scale = 1; fpd = -1;
@@ -108,6 +122,7 @@ int parse_cmd(int argc, const char** argv,
 	   << std::endl
 	   << "-s <double> -> Image scaling (default: 1)" << std::endl
 	   << "-d <int>    -> Frames/detections (default: -1)" << std::endl
+     << "-o <string> -> Output csv" << std::endl
 	   << "--check     -> Check for failure" << std::endl;
       return -1;
     }
@@ -154,6 +169,14 @@ int parse_cmd(int argc, const char** argv,
     }
   }
   if(i >= argc)std::strcpy(triFile,"../model/face.tri");
+  for(i = 1; i < argc; i++){
+    if(std::strcmp(argv[i],"-o") == 0){
+      if(argc > i+1)std::strcpy(outputFile,argv[i+1]);
+      else strcpy(outputFile,"");
+      break;
+    }
+  }
+  if(i >= argc)std::strcpy(outputFile,"");
   return 0;
 }
 //=============================================================================
@@ -161,8 +184,11 @@ int main(int argc, const char** argv)
 {
   //parse command line arguments
   char ftFile[256],conFile[256],triFile[256];
+  char outputFile[256];
   bool fcheck = false; double scale = 1; int fpd = -1; bool show = true;
-  if(parse_cmd(argc,argv,ftFile,conFile,triFile,fcheck,scale,fpd)<0)return 0;
+  if(parse_cmd(argc,argv,ftFile,conFile,triFile,outputFile,fcheck,scale,fpd)<0)return 0;
+
+  std::fstream filestream(outputFile, std::fstream::out);
 
   //set other tracking parameters
   std::vector<int> wSize1(1); wSize1[0] = 7;
@@ -194,7 +220,8 @@ int main(int argc, const char** argv)
     std::vector<int> wSize; if(failed)wSize = wSize2; else wSize = wSize1; 
     if(model.Track(gray,wSize,fpd,nIter,clamp,fTol,fcheck) == 0){
       int idx = model._clm.GetViewIdx(); failed = false;
-      Draw(im,model._shape,con,tri,model._clm._visi[idx]); 
+      Draw(im,model._shape,con,tri,model._clm._visi[idx]);
+      writePointsToFile(model._shape, filestream);
     }else{
       if(show){cv::Mat R(im,cvRect(0,0,150,50)); R = cv::Scalar(0,0,255);}
       model.FrameReset(); failed = true;
@@ -214,6 +241,8 @@ int main(int argc, const char** argv)
     imshow("Face Tracker",im); 
     int c = cvWaitKey(10);
     if(c == 27)break; else if(char(c) == 'd')model.FrameReset();
-  }return 0;
+  }
+  filestream.close();
+  return 0;
 }
 //=============================================================================
